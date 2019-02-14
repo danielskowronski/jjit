@@ -7,10 +7,17 @@ parser = argparse.ArgumentParser(description='jjit.py -- check for newest justjo
 parser.add_argument('-c', nargs='+', help='categories (like devops, java, c)', required=True)
 parser.add_argument('-l', nargs='+', help='locations - cities', required=True)
 parser.add_argument('-r', action='store_true', help='allow remote locations')
+parser.add_argument('-f', help='state file')
 args = parser.parse_args()
 
-f = open('/tmp/jjit.txt','a+')
-idsProcessed=open('/tmp/jjit.txt','r+').read()
+print(args.f)
+if args.f==None:
+	file='/tmp/jjit.txt'
+else:
+	file=args.f
+
+f = open(file,'a+')
+idsProcessed=open(file).read()
 
 r = requests.get('https://justjoin.it/api/offers')
 offers = r.json()
