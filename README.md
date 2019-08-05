@@ -16,9 +16,10 @@ optional arguments:
   -c C [C ...]  categories (like devops, java, c)
   -l L [L ...]  locations - cities
   -r            allow remote locations
+  -s [S]        minimum salary
   -f F          state file
 ```
 
-Example: `./jjit.py -l Kraków -c devops other -r`
+Example: `./jjit.py -l Kraków -c devops other -r -s 15000` (this will get offers in Kraków plus remote ones in categories devops and other with minimum salary of 15k PLN).
 
 You'll probably want to put it in crontab.
