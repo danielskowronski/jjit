@@ -1,0 +1,10 @@
+---
+services:
+  web:
+    build: .
+    volumes:
+      # - ./tmp:/tmp
+      - jjit_cache:/jjit_cache
+volumes:
+  jjit_cache: {}
+  

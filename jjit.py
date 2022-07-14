@@ -77,8 +77,8 @@ def check_if_offer_macthes(offer, args):
         matches_location['city'] = True
 
     matches['location'] = \
-        matches_location['country'] and
-    matches_location['city']
+        matches_location['country'] and \
+        matches_location['city']
 
     for offered_employment_type in offer['employment_types']:
         matches_remuneration = {
