@@ -215,6 +215,8 @@ def main():
                 offers_to_check.append(offer)
                 store_offer_variants(offer, state_file)
 
+        state_file.close()
+        state_file = open(args.state_file, 'a+')
         offer_ids_processed = open(args.state_file).read()
     else:
         offers_to_check = all_offers
