@@ -51,3 +51,9 @@ optional arguments:
 Example: `python3 jjit.py --category devops admin support architecture other security --fully_remote --salary 22000`
 
 You'll probably want to put it in crontab.
+
+## debug
+
+```
+rm s.txt; curl -s https://justjoin.it/api/offers | jq > all.json; python3 jjit.py --category devops admin support architecture other security --fully_remote --salary 21000 --contract permanent --dont-send --verbose --state-file s.txt | tee r.txt; cat r.txt | grep "Matched offer" | wc -l
+```

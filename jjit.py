@@ -6,6 +6,8 @@ import telegram_send
 import requests
 import sys
 from pprint import pprint
+from datetime import datetime
+
 API_URL = 'https://justjoin.it/api/offers'
 VERBOSE = True
 
@@ -18,7 +20,7 @@ def check_if_offer_already_checked(offer, offer_ids_processed):
 
 def store_offer_variants(offer, state_file):
     if VERBOSE:
-        print(f"\n>> store_offer_variants: {offer['id']}")
+        print(f">> store_offer_variants: {offer['id']}")
 
     if offer['multilocation']:
         for offer_variant in offer['multilocation']:
@@ -188,6 +190,8 @@ def main():
     VERBOSE = args.verbose
 
     if VERBOSE:
+        now = datetime.now()
+        print(f"\n\n========================================================= {now}")
         print(f">> args:")
         pprint(args)
 
@@ -198,11 +202,13 @@ def main():
     all_offers = jjit_api_request.json()
 
     if VERBOSE:
-        print("\n\n>> main/before_multioffer_check")
+        print("\n>> main/before_multioffer_check")
 
     if not args.location_city:
         offers_to_check = []
         for offer in all_offers:
+            if VERBOSE:
+                print(f"\n>> main/before: {offer['id']}")
             offer_already_checked = check_if_offer_already_checked(
                 offer, offer_ids_processed)
             if not offer_already_checked:
@@ -214,7 +220,7 @@ def main():
         offers_to_check = all_offers
 
     if VERBOSE:
-        print("\n\n>> main/after_multioffer_check")
+        print("\n>> main/after_multioffer_check")
 
     for offer in offers_to_check:
         if VERBOSE:
