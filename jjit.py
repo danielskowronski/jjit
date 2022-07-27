@@ -15,14 +15,14 @@ VERBOSE = True
 def check_if_offer_already_checked(offer, offer_ids_processed):
     if VERBOSE:
         print(f">> check_if_offer_already_checked: {offer['id']}")
-    return offer['id'] in offer_ids_processed
+    return '('+offer['id']+')' in offer_ids_processed
 
 
 def store_offer_variants(offer, state_file):
-    if VERBOSE:
-        print(f">> store_offer_variants: {offer['id']}")
+    if offer['multilocation'] and len(offer['multilocation'])>1: 
+        if VERBOSE:
+            print(f">> store_offer_variants: {offer['id']}")
 
-    if offer['multilocation']:
         for offer_variant in offer['multilocation']:
             if offer_variant['slug'] != offer['id']:
                 store_offer_id(offer_variant['slug'], state_file)
@@ -31,7 +31,7 @@ def store_offer_variants(offer, state_file):
 def store_offer_id(id, state_file):
     if VERBOSE:
         print(f">> store_offer: {id}")
-    state_file.write(','+id)
+    state_file.write('('+id+')')
 
 
 def check_if_offer_macthes(offer, args):
@@ -196,35 +196,42 @@ def main():
         pprint(args)
 
     state_file = open(args.state_file, 'a+')
+    offer_ids_processed = ''
+    print(f">> AAA len(offer_ids_processed): "+str(len(offer_ids_processed)))
     offer_ids_processed = open(args.state_file).read()
+    print(f">> BBB len(offer_ids_processed): "+str(len(offer_ids_processed)))
+
 
     jjit_api_request = requests.get(API_URL)
     all_offers = jjit_api_request.json()
+    all_offers.sort(key=id) # make sure that multilocation offer parent comes first (shortest id)
 
     if VERBOSE:
         print("\n>> main/before_multioffer_check")
 
     if not args.location_city:
-        offers_to_check = []
         for offer in all_offers:
             if VERBOSE:
                 print(f"\n>> main/before: {offer['id']}")
             offer_already_checked = check_if_offer_already_checked(
                 offer, offer_ids_processed)
             if not offer_already_checked:
-                offers_to_check.append(offer)
-                store_offer_variants(offer, state_file)
+                store_offer_variants(offer, state_file) # <-- this was not triggered for zoolatech-site-reliability-manager
+                # zoolatech-site-reliability-manager was added without multiloc, parent was stored, then it was updated and no multiloc child was skipped
 
+        state_file.flush()
         state_file.close()
         state_file = open(args.state_file, 'a+')
+        print(f">> CCC len(offer_ids_processed): "+str(len(offer_ids_processed)))
         offer_ids_processed = open(args.state_file).read()
-    else:
-        offers_to_check = all_offers
+        print(f">> DDD len(offer_ids_processed): "+str(len(offer_ids_processed)))
+
+    print(f">> EEE len(offer_ids_processed): "+str(len(offer_ids_processed)))
 
     if VERBOSE:
         print("\n>> main/after_multioffer_check")
 
-    for offer in offers_to_check:
+    for offer in all_offers:
         if VERBOSE:
             print(f"\n>> main/main: {offer['id']}")
 
