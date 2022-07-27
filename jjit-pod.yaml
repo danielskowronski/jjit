@@ -1,0 +1,16 @@
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: jjit
+spec:
+  volumes:
+    - name: jjit-cache
+      persistentVolumeClaim:
+        claimName: jjit-cache
+  containers:
+    - name: jjit-container
+      image: danielskowronski/jjit:0.1-arm64
+      volumeMounts:
+        - mountPath: /jjit_cache/
+          name: jjit-cache
