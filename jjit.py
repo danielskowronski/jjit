@@ -1,6 +1,28 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
+import json
+import hashlib
+from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import (
+    scoped_session,
+    sessionmaker,
+    backref,
+    relation,
+)
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    event,
+    MetaData,
+)
+import sqlalchemy
 import argparse
 import telegram_send
 import requests
@@ -9,26 +31,16 @@ from pprint import pprint
 from datetime import datetime
 import orm_sqlite
 import re
-
 from datetime import datetime
-programStartDate = datetime.now()
 
-import sqlalchemy
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, event, MetaData
-from sqlalchemy.orm import scoped_session, sessionmaker, backref, relation
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.automap import automap_base
-
-import hashlib
-import json
-
+PROGRAM_START_DATE = datetime.now()
 API_URL = 'https://justjoin.it/api/offers'
+URL_PREFIX = 'https://justjoin.it/offers/'
 VERBOSE = True
+Base = declarative_base()
+
 
 def check_if_offer_matches(offer, args):
-    if VERBOSE:
-        print(f">> check_if_offer_macthes: {offer['id']}")
-
     matches = {
         'category': False,
         'fully_remote': False,
@@ -93,10 +105,6 @@ def check_if_offer_matches(offer, args):
         matches_remuneration['currency'] and \
         matches_remuneration['amount']
 
-
-    if VERBOSE:
-        print(matches)
-
     return \
         matches['category'] and \
         matches['fully_remote'] and \
@@ -104,21 +112,18 @@ def check_if_offer_matches(offer, args):
         matches['remuneration']
 
 
-def get_offer_url(offer):
-    return 'https://justjoin.it/offers/'+offer.slug
-
 def send_offer(offer, dont_send):
-    msg = offer.company_name+' - '+offer.title+' '+get_offer_url(offer)
+    msg = offer.company_name+' - '+offer.title+\
+        ' '+URL_PREFIX+offer.slug
     print(msg)
     if not dont_send:
         telegram_send.send(messages=[msg], parse_mode='markdown')
 
-Base = declarative_base()
 
-class Offer(Base):  
+class Offer(Base):
     __tablename__ = 'offers'
 
-    lastUpdated = Column('last_updated', DateTime)
+    last_updated = Column(DateTime)
     sent = Column(Boolean)
 
     parent = Column(String)
@@ -131,13 +136,9 @@ class Offer(Base):
     workplace_remote = Column(Boolean)
     interview_remote = Column(Boolean)
 
-    @property
-    def fully_remote(self):
-        return self.workplace_remote and self.interview_remote
-
     country_code = Column(String(2))
     city = Column(String)
-    
+
     contract_type = Column(String, primary_key=True)
     salary_min = Column(Integer)
     salary_max = Column(Integer)
@@ -145,115 +146,128 @@ class Offer(Base):
 
     multiloc_checksum = Column(String)
 
-def get_multilocChildOffers(multilocChildSlug, db):
-    return db.query(Offer).filter(
-        Offer.slug == multilocChildSlug, 
-        Offer.parent == None
-    )
-
-def parse_multioffer_from_api(incomingOfferRaw, db):
-    undisclosedSalary = not incomingOfferRaw['employment_types']
-    if undisclosedSalary:
+def parse_multioffer_from_api(incoming_offer_raw, db):
+    undisclosed_salary = not incoming_offer_raw['employment_types']
+    if undisclosed_salary:
         return
-    incomingOfferIsMultilocParent = incomingOfferRaw['multilocation'] and len(incomingOfferRaw['multilocation'])>1
-    if not incomingOfferIsMultilocParent:
+    incoming_offer_is_multiloc_parent = \
+        incoming_offer_raw['multilocation'] and \
+        len(incoming_offer_raw['multilocation']) > 1
+    if not incoming_offer_is_multiloc_parent:
         return
 
-    for incommingOfferEmploymentOption in incomingOfferRaw['employment_types']:
-        if not incommingOfferEmploymentOption['salary']:
+    for incomming_offer_empl_option in incoming_offer_raw['employment_types']:
+        if not incomming_offer_empl_option['salary']:
             return
 
-        for multilocEntry in incomingOfferRaw['multilocation']:
-            multilocChildSlug = multilocEntry['slug']
-            multilocChildOffers = get_multilocChildOffers(multilocChildSlug, db)
-            for multilocChildOffer in multilocChildOffers:
-                multilocChildOffer.lastUpdated = programStartDate
-                multilocChildOffer.parent      = incomingOfferRaw['id']
+        for multiloc_entry in incoming_offer_raw['multilocation']:
+            multiloc_child_slug = multiloc_entry['slug']
+            multiloc_child_offers = db.query(Offer).filter(
+                Offer.slug == multiloc_child_slug,
+                Offer.parent == None
+            )
+            for multiloc_child_offer in multiloc_child_offers:
+                multiloc_child_offer.last_updated = PROGRAM_START_DATE
+                multiloc_child_offer.parent = incoming_offer_raw['id']
+
 
 def hash_multiloc(multiloc):
     multiloc_slugs = []
     for multiloc_entry in multiloc:
         multiloc_slugs.append(multiloc_entry['slug'])
     multiloc_slugs.sort()
-    return hashlib.md5(json.dumps(multiloc_slugs, sort_keys=True).encode('utf-8')).hexdigest()
+    return hashlib.md5(json.dumps(multiloc_slugs).encode('utf-8')).hexdigest()
 
-def incomingOffer_from_raw(incomingOfferRaw, incommingOfferEmploymentOption):
-    incomingOffer = Offer();
-    incomingOffer.lastUpdated       = programStartDate
-    incomingOffer.slug              = incomingOfferRaw['id']
-    incomingOffer.contract_type     = incommingOfferEmploymentOption['type']
-    incomingOffer.title             = incomingOfferRaw['title']
-    incomingOffer.company_name      = incomingOfferRaw['company_name']
-    incomingOffer.category          = incomingOfferRaw['marker_icon']
-    incomingOffer.workplace_remote  = incomingOfferRaw['workplace_type']=='remote'
-    incomingOffer.interview_remote  = incomingOfferRaw['remote_interview']
-    incomingOffer.country_code      = incomingOfferRaw['country_code']
-    incomingOffer.city              = incomingOfferRaw['city']
-    incomingOffer.salary_min        = incommingOfferEmploymentOption['salary']['from']
-    incomingOffer.salary_max        = incommingOfferEmploymentOption['salary']['to']
-    incomingOffer.currency          = incommingOfferEmploymentOption['salary']['currency']
-    incomingOffer.multiloc_checksum = hash_multiloc(incomingOfferRaw['multilocation'])
-    return incomingOffer
 
-def get_knownOffersMatchingIDs(incomingOffer, db):
-    return db.query(Offer).filter(
-        Offer.slug          == incomingOffer.slug, 
-        Offer.contract_type == incomingOffer.contract_type, 
-    )
-def add_incomingOffer(incomingOffer, db):
-    db.add(incomingOffer)
+def incoming_offer_from_raw(incoming_offer_raw, incomming_offer_empl_option):
+    incoming_offer = Offer()
+    incoming_offer.last_updated = PROGRAM_START_DATE
+    incoming_offer.slug = incoming_offer_raw['id']
+    incoming_offer.contract_type = incomming_offer_empl_option['type']
+    incoming_offer.title = incoming_offer_raw['title']
+    incoming_offer.company_name = incoming_offer_raw['company_name']
+    incoming_offer.category = incoming_offer_raw['marker_icon']
+    incoming_offer.workplace_remote = \
+        incoming_offer_raw['workplace_type'] == 'remote'
+    incoming_offer.interview_remote = incoming_offer_raw['remote_interview']
+    incoming_offer.country_code = incoming_offer_raw['country_code']
+    incoming_offer.city = incoming_offer_raw['city']
+    incoming_offer.salary_min = incomming_offer_empl_option['salary']['from']
+    incoming_offer.salary_max = incomming_offer_empl_option['salary']['to']
+    incoming_offer.currency = \
+        incomming_offer_empl_option['salary']['currency']
+    incoming_offer.multiloc_checksum = hash_multiloc(
+        incoming_offer_raw['multilocation'])
+    return incoming_offer
+
+
+def add_incoming_offer(incoming_offer, db):
+    db.add(incoming_offer)
+
+
 def delete_offer(offer, db):
     db.delete(offer)
 
-def parse_offer_from_api(incomingOfferRaw, db):
-    undisclosedSalary = not incomingOfferRaw['employment_types']
-    if undisclosedSalary:
+
+def offers_differ(a, b):
+    return \
+        a.multiloc_checksum != b.multiloc_checksum or \
+        a.title != b.title or \
+        a.category != b.category or \
+        a.workplace_remote != b.workplace_remote or \
+        a.interview_remote != b.interview_remote or \
+        a.salary_min != b.salary_min or \
+        a.salary_max != b.salary_max or \
+        a.currency != b.currency
+
+
+def parse_offer_from_api(incoming_offer_raw, db):
+    undisclosed_salary = not incoming_offer_raw['employment_types']
+    if undisclosed_salary:
         return
 
-    for incommingOfferEmploymentOption in incomingOfferRaw['employment_types']:
-        if not incommingOfferEmploymentOption['salary']:
+    for incomming_offer_empl_option in incoming_offer_raw['employment_types']:
+        if not incomming_offer_empl_option['salary']:
             return
 
-        incomingOffer = incomingOffer_from_raw(incomingOfferRaw, incommingOfferEmploymentOption)
+        incoming_offer = incoming_offer_from_raw(
+            incoming_offer_raw, incomming_offer_empl_option)
 
-        knownOffersMatchingIDs = get_knownOffersMatchingIDs(incomingOffer, db)
-        
-        if knownOffersMatchingIDs.count()>1:
-            raise Exception("len(offersAlreadyKnown)>1")
+        known_offers_matching_ids = db.query(Offer).filter(
+            Offer.slug == incoming_offer.slug,
+            Offer.contract_type == incoming_offer.contract_type,
+        )
 
-        offerAlreadyKnown = knownOffersMatchingIDs.count()==1
-        
-        knownOfferMatchingIDsChanged = False
-        if offerAlreadyKnown:
-            knownOfferMatchingIDs=knownOffersMatchingIDs[0]
-            knownOfferMatchingIDsChanged = \
-                incomingOffer.multiloc_checksum != knownOfferMatchingIDs.multiloc_checksum or \
-                incomingOffer.title             != knownOfferMatchingIDs.title or \
-                incomingOffer.category          != knownOfferMatchingIDs.category or \
-                incomingOffer.workplace_remote  != knownOfferMatchingIDs.workplace_remote or \
-                incomingOffer.interview_remote  != knownOfferMatchingIDs.interview_remote or \
-                incomingOffer.salary_min        != knownOfferMatchingIDs.salary_min or \
-                incomingOffer.salary_max        != knownOfferMatchingIDs.salary_max or \
-                incomingOffer.currency          != knownOfferMatchingIDs.currency 
-        
-        if knownOfferMatchingIDsChanged:
-            print("<-- changed: "+incomingOfferRaw['id'])
-            delete_offer(knownOffersMatchingIDs[0], db)
+        offer_already_known = known_offers_matching_ids.count() == 1
 
-        if not offerAlreadyKnown:
-            add_incomingOffer(incomingOffer, db)
+        known_offer_matching_ids_changed = False
+        if offer_already_known:
+            known_offer_matching_id = known_offers_matching_ids[0]
+            known_offer_matching_ids_changed = offers_differ(
+                incoming_offer, known_offer_matching_id)
+
+        if known_offer_matching_ids_changed:
+            print("<-- changed: "+incoming_offer_raw['id'])
+            delete_offer(known_offers_matching_ids[0], db)
+
+        if not offer_already_known:
+            add_incoming_offer(incoming_offer, db)
+
 
 def check_if_offer_sent(offer):
     return offer.sent
 
+
 def mark_offer_as_sent(offer):
     offer.sent = True
 
+
 def get_all_known_offers(db, args):
     if not args.location_city or args.fully_remote:
-        return db.query(Offer).filter(Offer.parent==None)
+        return db.query(Offer).filter(Offer.parent == None)
     else:
         return db.query(Offer)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -300,27 +314,21 @@ def main():
     global VERBOSE
     VERBOSE = args.verbose
 
-    if VERBOSE:
-        print(f"\n\n========================================================= {programStartDate}")
-        print(f">> args:")
-        pprint(args)
-
-
-    engine = create_engine(args.database) #,echo = True)
+    engine = create_engine(args.database)
     metadata = MetaData()
-    db = scoped_session(sessionmaker(autocommit=False,autoflush=True,bind=engine))
+    db = scoped_session(sessionmaker(
+        autocommit=False, autoflush=True, bind=engine))
 
     if not sqlalchemy.inspect(engine).has_table(Offer.__tablename__):
         Offer.__table__.create(engine)
 
     jjit_api_request = requests.get(API_URL)
     all_incoming_offers = jjit_api_request.json()
-    all_incoming_offers.sort(key=id)
 
     for incoming_offer in all_incoming_offers:
         parse_offer_from_api(incoming_offer, db)
     db.commit()
-    
+
     for incoming_offer in all_incoming_offers:
         parse_multioffer_from_api(incoming_offer, db)
     db.commit()
@@ -334,6 +342,7 @@ def main():
                 send_offer(known_offer, args.dont_send)
                 mark_offer_as_sent(known_offer)
     db.commit()
+
 
 if __name__ == '__main__':
     main()

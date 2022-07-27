@@ -22,9 +22,8 @@ cat all.json | jq | grep '"type"' |sort | uniq -c | sort -rn
 
 ## usage
 ```
-usage: jjit.py [-h] --category CATEGORY [CATEGORY ...] [--fully_remote] [--location-country LOCATION_COUNTRY [LOCATION_COUNTRY ...]]
-               [--location-city LOCATION_CITY [LOCATION_CITY ...]] [--salary [SALARY]] [--currency [CURRENCY]] [--contract-type [CONTRACT_TYPE]] [--state-file STATE_FILE]
-               [--verbose] [--dont-send]
+usage: jjit.py [-h] --category CATEGORY [CATEGORY ...] [--fully_remote] [--location-country LOCATION_COUNTRY [LOCATION_COUNTRY ...]] [--location-city LOCATION_CITY [LOCATION_CITY ...]] [--salary [SALARY]] [--currency [CURRENCY]]
+               [--contract-type [CONTRACT_TYPE]] [--database DATABASE] [--verbose] [--dont-send]
 
 jjit.py -- check for newest justjoin.it job offers and push them by telegram_send
 
@@ -42,8 +41,7 @@ optional arguments:
                         currency (as in offer) [pln, usd, eur, gbp, chf]; default - pln
   --contract-type [CONTRACT_TYPE]
                         contract type [permanent, b2b, mandate_contract, ANY]; default - ANY
-  --state-file STATE_FILE
-                        state file; default - /tmp/jjit.txt
+  --database DATABASE   state database; default - sqlite:///jjit.sqlite3
   --verbose             verbose mode for debugging
   --dont-send           do not actually send offers via Telegram
 ```
@@ -52,8 +50,6 @@ Example: `python3 jjit.py --category devops admin support architecture other sec
 
 You'll probably want to put it in crontab.
 
-## debug
+## database
 
-```
-rm s.txt; curl -s https://justjoin.it/api/offers | jq > all.json; python3 jjit.py --category devops admin support architecture other security --fully_remote --salary 21000 --contract permanent --dont-send --verbose --state-file s.txt | tee r.txt; cat r.txt | grep "Matched offer" | wc -l
-```
+Follow https://docs.sqlalchemy.org/en/14/core/engines.html
